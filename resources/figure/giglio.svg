@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" data-nome="Giglio" data-singolare="un giglio" data-articolo="al giglio" data-plurale="gigli">
+  <title>Giglio</title>
+  <g fill="#000">
+    <!-- petalo centrale -->
+    <path d="M50 2 C59 14 66 28 61 46 L57 58 L43 58 L39 46 C34 28 41 14 50 2 Z"/>
+    <!-- petali laterali -->
+    <path d="M56 57 C59 37 73 24 86 28 C97 32 98 48 89 53 C84 56 79 51 82 46 C84 42 80 37 75 40 C67 45 64 53 63 60 Z"/>
+    <path d="M44 57 C41 37 27 24 14 28 C3 32 2 48 11 53 C16 56 21 51 18 46 C16 42 20 37 25 40 C33 45 36 53 37 60 Z"/>
+    <!-- fascetta -->
+    <rect x="27" y="56" width="46" height="9" rx="2"/>
+    <!-- piede -->
+    <path d="M45 65 L55 65 L53 86 L50 96 L47 86 Z"/>
+    <path d="M55 65 C66 66 74 75 71 87 C67 80 61 75 54 74 Z"/>
+    <path d="M45 65 C34 66 26 75 29 87 C33 80 39 75 46 74 Z"/>
+  </g>
+</svg>

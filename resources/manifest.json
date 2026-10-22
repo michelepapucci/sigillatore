@@ -1,0 +1,27 @@
+{
+  "figure": [
+    "anello.svg",
+    "bozzolo.svg",
+    "corona-figura.svg",
+    "covone-di-grano.svg",
+    "crescente.svg",
+    "crocetta.svg",
+    "cuore.svg",
+    "foglia-di-gelso.svg",
+    "giglio.svg",
+    "incudine.svg",
+    "losanga.svg",
+    "martello.svg",
+    "orso-rampante.svg",
+    "sole.svg",
+    "spada.svg",
+    "stella-sei-raggi.svg",
+    "stella.svg",
+    "tondo.svg",
+    "tonno.svg",
+    "torre.svg"
+  ],
+  "ornamenti": [
+    "corona-reale.svg"
+  ]
+}
