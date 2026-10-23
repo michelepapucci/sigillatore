@@ -43,3 +43,20 @@ Attributi sul tag `<svg>` radice:
 
 Per gli ornamenti puoi aggiungere `data-blasone="timbrato dalla corona reale"`.
 Un file caricato con *Prova SVG* è trattato come ornamento se ha `data-tipo="ornamento"`.
+
+## Gilde predefinite (`gilde.json`)
+
+Ogni gilda del menù "Gilda" del capo è una voce di `gilde.json`:
+
+```json
+{ "id": "fabbri", "nome": "Gilda dei Fabbri, Corazzai e Spadai", "classe": "maggiore",
+  "smalto": "argento", "figura": "martello", "smaltoFigura": "nero" }
+```
+
+- `classe`: `maggiore` (linea dritta) o `minore` (linea merlata). Le classi e la loro linea stanno in `classi`.
+- Per forzare un'altra linea aggiungi `"linea"`: `dritta`, `ondata`, `dentata` o `merlata`.
+- `figura`: nome di un file di `figure/`, senza `.svg`.
+- Smalti: `oro`, `argento`, `rosso`, `azzurro`, `verde`, `porpora`, `nero`, `armellino`.
+- `smaltoFigura2` è facoltativo: è il colore delle parti rosse dell'SVG.
+- Non cambiare l'`id` di una gilda già usata: gli stemmi salvati vi fanno riferimento.
+- Se modifichi smalti o figura di una gilda, si aggiornano tutti gli stemmi di quella gilda.

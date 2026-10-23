@@ -1,0 +1,11 @@
+{
+  "classi": {
+    "maggiore": { "nome": "Arti maggiori", "linea": "dritta" },
+    "minore": { "nome": "Arti minori", "linea": "merlata" }
+  },
+  "gilde": [
+    { "id": "lana-seta", "nome": "Arte della Lana, della Seta, dei Vaiai e Pellicciai", "classe": "maggiore", "smalto": "azzurro", "figura": "bozzolo", "smaltoFigura": "argento" },
+    { "id": "fabbri", "nome": "Gilda dei Fabbri, Corazzai e Spadai", "classe": "maggiore", "smalto": "argento", "figura": "martello", "smaltoFigura": "nero" },
+    { "id": "avventurieri", "nome": "Gilda degli Avventurieri", "classe": "maggiore", "smalto": "rosso", "figura": "spada", "smaltoFigura": "oro" }
+  ]
+}

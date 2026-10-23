@@ -67,6 +67,31 @@
   const select = (path, cur, items, cls) => `<select class="inp ${cls || ''}" data-set="${path}">${items.map(([v, l]) => `<option value="${esc(v)}"${String(v) === String(cur) ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select>`;
   const lineOpts = Object.entries(Eng.LINES).map(([k, v]) => [k, v.n]);
 
+  /* ---------- gilde (preset da resources/gilde.json) ---------- */
+  // capo.gilda: id del preset · '' = capo personalizzato · assente = stemma precedente ai preset, si riconosce dai valori
+  let GUILDS = { classi: {}, gilde: [] }, capoAdv = null;
+  async function loadGuilds() {
+    try { const r = await fetch('resources/gilde.json', { cache: 'no-cache' }); if (r.ok) GUILDS = Object.assign({ classi: {}, gilde: [] }, await r.json()); } catch (e) { /* senza preset resta il capo personalizzato */ }
+    const bad = GUILDS.gilde.filter(g => !Eng.FIGS[g.figura] || !T[g.smalto] || !T[g.smaltoFigura] || (g.linea && !Eng.LINES[g.linea]));
+    GUILDS.gilde = GUILDS.gilde.filter(g => !bad.includes(g));
+    return bad.map(g => g.nome || g.id);
+  }
+  const guildCapo = g => ({ t: g.smalto, fig: g.figura, ft: g.smaltoFigura, ft2: g.smaltoFigura2 || 'rosso', line: g.linea || (GUILDS.classi[g.classe] || {}).linea || 'dritta' });
+  function guildOf(capo) {
+    if (capo.gilda != null) return GUILDS.gilde.find(g => g.id === capo.gilda) || null;
+    return GUILDS.gilde.find(g => { const p = guildCapo(g); return p.t === capo.t && p.fig === capo.fig && p.ft === capo.ft && p.line === (capo.line || 'dritta'); }) || null;
+  }
+  // allinea il capo al preset della sua gilda: se il preset cambia, cambiano tutti gli stemmi di quella gilda
+  function withGuild(d) { const g = d.capo && guildOf(d.capo); if (g) Object.assign(d.capo, guildCapo(g), { gilda: g.id }); return d; }
+  function guildSelect(g) {
+    const groups = {};
+    for (const x of GUILDS.gilde) (groups[x.classe] = groups[x.classe] || []).push(x);
+    const opt = x => `<option value="${esc(x.id)}"${g && g.id === x.id ? ' selected' : ''}>${esc(x.nome)}</option>`;
+    return `<select class="inp sel-gilda" aria-label="Gilda">${Object.keys(groups).map(k =>
+      `<optgroup label="${esc((GUILDS.classi[k] || {}).nome || 'Altre gilde')}">${groups[k].map(opt).join('')}</optgroup>`).join('')}
+      <option value=""${g ? '' : ' selected'}>Personalizzata…</option></select>`;
+  }
+
   /* ---------- editor ---------- */
   function renderEditor() {
     const part = Eng.PARTS[D.partition];
@@ -86,15 +111,19 @@
         <div class="row gap-s">${Eng.ORDS[o.type].line ? select('ordinaries.' + i + '.line', o.line || 'dritta', lineOpts) : ''}<button class="x" data-act="del-ord" data-i="${i}" aria-label="Rimuovi">×</button></div></div>
         ${chips('ordinaries.' + i + '.t', o.t)}</div>`).join('')}</div>` : '<p class="hint">Fascia, palo, banda, croce… si sovrappongono al campo.</p>'}</div>`);
 
-    const c = D.capo;
+    const c = D.capo, g = guildOf(c), adv = capoAdv == null ? !g : capoAdv;
     S.push(`<div class="sec"><div class="sec-h"><h3>Capo di gilda</h3>
       <label class="switch"><input type="checkbox" data-set="capo.on" ${c.on ? 'checked' : ''}> Cucito</label></div>
-      ${c.on ? `<div class="field-row"><span class="lbl">Smalto del capo <b>${T[c.t].n}</b></span>${chips('capo.t', c.t)}</div>
-      <div class="row"><span class="lbl">Rango</span>${seg('capo.n', c.n, [[1, '1'], [2, '2'], [3, '3']])}
-        <span class="lbl">Linea</span>${select('capo.line', c.line || 'dritta', lineOpts)}</div>
+      ${c.on ? `<div class="field-row"><span class="lbl">Gilda</span>${guildSelect(g)}</div>
+      <div class="row"><span class="lbl">Rango</span>${seg('capo.n', c.n, [[1, '1'], [2, '2'], [3, '3']])}</div>
+      <details class="adv capo-adv"${adv ? ' open' : ''}><summary>Avanzate</summary>
+      ${g ? '<p class="hint">Cambiando uno di questi valori il capo diventa personalizzato.</p>' : ''}
+      <div class="field-row"><span class="lbl">Smalto del capo <b>${T[c.t].n}</b></span>${chips('capo.t', c.t)}</div>
+      <div class="row"><span class="lbl">Linea</span>${select('capo.line', c.line || 'dritta', lineOpts)}</div>
       <div class="field-row"><span class="lbl">Figura della gilda</span>${select('capo.fig', c.fig, figs.map(([k, f]) => [k, f.n]))}</div>
       <div class="field-row"><span class="lbl">Smalto delle figure <b>${T[c.ft].n}</b></span>${chips('capo.ft', c.ft)}</div>
-      ${Eng.FIGS[c.fig] && Eng.FIGS[c.fig].sec.length ? `<div class="field-row"><span class="lbl">Secondo smalto <b>${T[c.ft2 || 'rosso'].n}</b></span>${chips('capo.ft2', c.ft2 || 'rosso')}</div>` : ''}`
+      ${Eng.FIGS[c.fig] && Eng.FIGS[c.fig].sec.length ? `<div class="field-row"><span class="lbl">Secondo smalto <b>${T[c.ft2 || 'rosso'].n}</b></span>${chips('capo.ft2', c.ft2 || 'rosso')}</div>` : ''}
+      </details>`
       : '<p class="hint">Il capo con 1, 2 o 3 figure in fascia indica la gilda del capofamiglia e il suo rango.</p>'}</div>`);
 
     const ch = sel != null ? D.charges[sel] : null, F = ch && Eng.FIGS[ch.fig];
@@ -207,7 +236,7 @@
     if (D.capo.on) {
       const F = Eng.FIGS[D.capo.fig], l = Eng.LINES[D.capo.line || 'dritta'];
       s += '; col capo' + (l.adj ? ' ' + l.adj : '') + ' ' + of(D.capo.t) + ', cucito, caricato ' +
-        (F ? (D.capo.n === 1 ? 'di ' + F.sg + ' ' + of(D.capo.ft) : 'di ' + NUM[D.capo.n] + ' ' + F.pl + ' ' + of(D.capo.ft) + ', ordinati in fascia') : '');
+        (F ? (D.capo.n === 1 ? 'di ' + F.sg + ' ' + of(D.capo.ft) : 'di ' + NUM[D.capo.n] + ' ' + F.pl + ' ' + of(D.capo.ft) + ', ordinat' + (/^(una |un')/.test(F.sg) ? 'e' : 'i') + ' in fascia') : '');
     }
     s += '.';
     if (Eng.ornOn(D)) { const F = Eng.FIGS[D.orn.id]; s += ' Scudo ' + (F.blasone || 'sormontato da ' + F.sg) + '.'; }
@@ -278,7 +307,7 @@
 
   /* ---------- armoriale ---------- */
   function miniSvg(design) {
-    try { const L = Eng.layers(design, Object.assign({}, SP, { D: 30 })); const { vb, inner } = shieldSvg(L, { id: 'm' + uid() }); return `<svg viewBox="${vb.join(' ')}" aria-hidden="true">${inner}</svg>`; }
+    try { const L = Eng.layers(withGuild(clone(design)), Object.assign({}, SP, { D: 30 })); const { vb, inner } = shieldSvg(L, { id: 'm' + uid() }); return `<svg viewBox="${vb.join(' ')}" aria-hidden="true">${inner}</svg>`; }
     catch (e) { return '<svg viewBox="0 0 10 10"></svg>'; }
   }
   function renderArmorial() {
@@ -332,9 +361,11 @@
   }
   function fullRender() {
     $('#in-famiglia').value = famiglia; $('#in-titolare').value = titolare;
+    withGuild(D);
     renderEditor(); renderSealOpts(); renderStage(); renderArmorial(); scheduleSeal();
   }
   function setPath(path, val) {
+    if (/^capo\.(t|fig|ft|ft2|line)$/.test(path)) D.capo.gilda = '';   // modifica avanzata: il capo non segue più il preset
     const ks = path.split('.'); let o = D;
     for (let i = 0; i < ks.length - 1; i++) o = o[ks[i]];
     o[ks[ks.length - 1]] = val;
@@ -384,6 +415,11 @@
   });
   document.addEventListener('change', e => {
     const el = e.target;
+    if (el.classList.contains('sel-gilda')) {
+      const g = GUILDS.gilde.find(x => x.id === el.value);
+      if (g) Object.assign(D.capo, guildCapo(g), { gilda: g.id }); else { D.capo.gilda = ''; capoAdv = true; }
+      changed(); return;
+    }
     if (el.classList.contains('add-ord') && el.value) { D.ordinaries.push({ type: el.value, t: 'argento', line: 'dritta' }); changed(); return; }
     if (el.dataset.sp) { SP[el.dataset.sp] = el.type === 'checkbox' ? el.checked : +el.value; spChanged(); renderSealOpts(); renderStage(); scheduleSeal(); return; }
     if (el.dataset.set != null && el.dataset.set !== '') {
@@ -407,6 +443,9 @@
   });
   let rq = 0;
   function requestRender() { if (rq) return; rq = requestAnimationFrame(() => { rq = 0; renderStage(); scheduleSeal(); }); }
+
+  // ricorda se "Avanzate" del capo è aperto, perché l'editor viene ridisegnato a ogni modifica
+  document.addEventListener('click', e => { const sm = e.target.closest('.capo-adv > summary'); if (sm) capoAdv = !sm.parentElement.open; });
 
   /* trascinamento delle figure */
   const stage = $('#stage');
@@ -596,6 +635,7 @@
       $('#loading-msg').innerHTML = 'Non trovo <code>resources/manifest.json</code>. Apri la pagina tramite un server (per esempio <code>python3 -m http.server</code> nella cartella del progetto) oppure da GitHub Pages.';
       return;
     }
+    const badGuilds = await loadGuilds();
     for (const l of store.local) { try { await Figures.register(l.id, l.svg, { local: true, kind: l.kind }); } catch (e) { /* ignora */ } }
     if (!store.entries.length && !store.seeded) {
       store.entries = EXAMPLES.map(([n, d], i) => ({ id: 'esempio-' + (i + 1), famiglia: 'Dai tuoi disegni', titolare: n, parent: null, design: d, updated: 0 }));   // id fissi e updated 0: un esempio eliminato in un browser resta eliminato anche negli altri
@@ -607,6 +647,7 @@
     $('#loading').hidden = true;
     fullRender();
     if (errors.length) toast('Alcune figure non si sono caricate: ' + errors[0]);
+    else if (badGuilds.length) toast('Gilde ignorate in gilde.json (figura, smalto o linea sconosciuti): ' + badGuilds.join(', '));
     renderSync(); requestPersistence(false);
     if (sync.gist) syncNow();
   })();

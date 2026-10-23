@@ -186,6 +186,10 @@ details.sync summary { cursor: pointer; font-size: .92rem; }
 .sync-body { display: grid; gap: 8px; margin-top: 8px; }
 .sync-body .row input { flex: 1; min-width: 0; }
 .sync-body a { color: inherit; }
+details.adv { border-top: 1px dashed var(--line); padding-top: 8px; }
+details.adv summary { cursor: pointer; font-size: .84rem; color: var(--muted); }
+details.adv[open] { display: grid; gap: 10px; }
+.sel-gilda { width: 100%; }
 details.print summary { cursor: pointer; font-family: var(--f-display); font-size: 1.05rem; }
 details.print[open] summary { margin-bottom: 10px; }
 #print-opts { display: grid; gap: 10px; }
