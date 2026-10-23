@@ -243,6 +243,39 @@ const Eng = (() => {
 
   function capoSlots(n) { return n === 1 ? [50] : n === 2 ? [31, 69] : n === 3 ? [21, 50, 79] : []; }
 
+  // y del bordo superiore dello scudo alla colonna x (minima intersezione con la verticale)
+  function shieldTop(pts, x) {
+    let y = Infinity;
+    for (let i = 0; i < pts.length; i++) {
+      const [x0, y0] = pts[i], [x1, y1] = pts[(i + 1) % pts.length];
+      if ((x0 - x) * (x1 - x) > 0 || x0 === x1) continue;
+      y = Math.min(y, y0 + (y1 - y0) * (x - x0) / (x1 - x0));
+    }
+    return y;
+  }
+  const CAPO_GAP_T = 1.0, CAPO_GAP_B = 0.6;   // mm di cera libera sopra (oltre il bordo) e sotto le figure del capo
+  // posizione e dimensione delle figure del capo: centrate nella fascia libera tra bordo dello scudo e linea del capo
+  function capoPlace(d, sp, k) {
+    const S = SHIELDS[d.shape], F = FIGS[d.capo.fig], pts = S.pts();
+    let s = (d.capo.n === 3 ? 0.62 : 0.7) * (S.capoB - S.capoT);
+    const amp = Math.max(...profile(d.capo.line || 'dritta', 20).map(p => Math.abs(p[1])));
+    const bot = S.capoB - amp - (sp.ow / 2 + CAPO_GAP_B) / k;
+    let u0 = -.5, u1 = .5, v0 = -.5, v1 = .5;
+    if (F && F.add.length) { u0 = v0 = Infinity; u1 = v1 = -Infinity;
+      for (const p of F.add) for (const [u, v] of p) { u0 = Math.min(u0, u); u1 = Math.max(u1, u); v0 = Math.min(v0, v); v1 = Math.max(v1, v); } }
+    // stessa altezza e stessa dimensione per tutte, così restano ordinate in fascia anche sotto un bordo curvo
+    const xs = capoSlots(d.capo.n);
+    let sz = s, top = 0;
+    for (let it = 0; it < 4; it++) {
+      top = -Infinity;
+      for (const x of xs) for (let j = 0; j <= 8; j++) top = Math.max(top, shieldTop(pts, x + (u0 + (u1 - u0) * j / 8) * sz));
+      top += (sp.bw + CAPO_GAP_T) / k;
+      sz = Math.min(s, (bot - top) / (v1 - v0));
+    }
+    const y = (top + bot) / 2 - (v0 + v1) / 2 * sz;
+    return xs.map(x => ({ x, y, s: sz }));
+  }
+
   /* ---------- strati visibili ---------- */
   function layers(d, sp) {
     const fr = frame(d, sp), { T, k } = fr, f = SHIELDS[d.shape].fy;
@@ -259,9 +292,8 @@ const Eng = (() => {
     const S = SHIELDS[d.shape];
     if (d.capo.on) {
       L.push({ kind: 'capo', t: d.capo.t, paths: inter(halves(50, S.capoB, 1, 0, d.capo.line || 'dritta', T)[0], shield) });
-      const sz = (d.capo.n === 3 ? 0.62 : 0.7) * (S.capoB - S.capoT);
-      capoSlots(d.capo.n).forEach((x, i) => {
-        const ch = { fig: d.capo.fig, x, y: (S.capoB + S.capoT) / 2, s: sz, r: 0 };
+      capoPlace(d, sp, k).forEach(({ x, y, s }, i) => {
+        const ch = { fig: d.capo.fig, x, y, s, r: 0 };
         L.push({ kind: 'capofig', i, t: d.capo.ft, paths: inter(figGeo(ch, T), shield) });
         const sec = figGeo(ch, T, 'sec'); if (sec.length) L.push({ kind: 'capofig2', i, t: d.capo.ft2 || 'rosso', paths: inter(sec, shield) });
       });

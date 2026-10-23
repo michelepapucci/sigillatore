@@ -179,6 +179,13 @@ input[type="range"] { width: 100%; accent-color: var(--lacca); }
 .downloads { gap: 6px; }
 .stat { font: .78rem/1.4 var(--f-mono); color: var(--muted); margin: 2px 0 0; }
 .stat .warn { color: var(--lacca); }
+details.sync { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--line); }
+details.sync summary { cursor: pointer; font-size: .92rem; }
+.sync-status { margin-left: 6px; font: .76rem var(--f-mono); color: var(--muted); }
+.sync-status.bad, .hint.bad { color: var(--lacca); }
+.sync-body { display: grid; gap: 8px; margin-top: 8px; }
+.sync-body .row input { flex: 1; min-width: 0; }
+.sync-body a { color: inherit; }
 details.print summary { cursor: pointer; font-family: var(--f-display); font-size: 1.05rem; }
 details.print[open] summary { margin-bottom: 10px; }
 #print-opts { display: grid; gap: 10px; }

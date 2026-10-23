@@ -36,7 +36,7 @@
   <section class="stage-col" aria-label="Scudo">
     <div class="stage-wrap">
       <svg id="stage" class="stage" tabindex="0" aria-label="Scudo: trascina le figure per spostarle"></svg>
-      <p class="stage-hint">Trascina le figure per spostarle · frecce per rifinire · Canc per eliminare</p>
+      <p class="stage-hint">Trascina le figure: si agganciano ai centri (Alt per muoverle libere) · frecce per rifinire · Canc per eliminare</p>
     </div>
     <div class="blazon">
       <span class="eyebrow">Blasonatura</span>
@@ -51,6 +51,21 @@
         </div>
       </div>
       <div id="armorial"></div>
+      <details class="sync">
+        <summary>Archivio su GitHub <span class="sync-status" id="sync-status"></span></summary>
+        <div class="sync-body">
+          <div id="sync-off">
+            <p class="hint">Copia l’armoriale in un Gist <b>segreto</b> del tuo account GitHub (non elencato, visibile solo a chi ha il link): resta al sicuro anche se il browser cancella i dati, e lo ritrovi in ogni browser che colleghi. <a href="https://github.com/settings/tokens/new?scopes=gist&amp;description=Sigillatore" target="_blank" rel="noopener">Crea un token</a> con il solo permesso <b>gist</b> e incollalo qui.</p>
+            <div class="row gap-s"><input id="in-token" class="inp" type="password" autocomplete="off" spellcheck="false" placeholder="ghp_…" aria-label="Token di GitHub"><button class="btn small primary" data-act="sync-connect">Collega</button></div>
+          </div>
+          <div id="sync-on" hidden>
+            <p class="hint">Ogni salvataggio viene copiato nel <a id="sync-link" target="_blank" rel="noopener">Gist segreto</a>. All’apertura e quando torni su questa pagina riprendo le modifiche fatte negli altri browser.</p>
+            <div class="row gap-s"><button class="btn small" data-act="sync-now">Sincronizza ora</button><button class="btn small ghost" data-act="sync-off">Scollega questo browser</button></div>
+          </div>
+          <p class="hint bad" id="sync-err" hidden></p>
+          <p class="hint" id="store-status"></p>
+        </div>
+      </details>
     </div>
   </section>
 
@@ -91,6 +106,7 @@
 <script src="vendor/earcut.min.js"></script>
 <script src="js/engine.js"></script>
 <script src="js/figures.js"></script>
+<script src="js/sync.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

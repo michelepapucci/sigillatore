@@ -22,10 +22,23 @@
 
   /* ---------- stato e salvataggio ---------- */
   const KEY = 'sigillatore.v1';
-  let store = { entries: [], current: null, sp: clone(SP_DEF), wax: 'rosso', local: [], draft: null };
+  // deleted = {id: ms} stemmi eliminati (per la sincronizzazione), spAt = ultima modifica dei parametri di stampa
+  let store = { entries: [], current: null, sp: clone(SP_DEF), wax: 'rosso', local: [], draft: null, deleted: {}, spAt: 0 };
   try { const s = JSON.parse(localStorage.getItem(KEY) || 'null'); if (s) store = Object.assign(store, s); } catch (e) { /* storage non disponibile */ }
   store.sp = Object.assign(clone(SP_DEF), store.sp || {});
-  const persist = () => { try { localStorage.setItem(KEY, JSON.stringify(store)); } catch (e) { toast('Non riesco a salvare in questo browser'); } };
+  const persist = () => {
+    try { localStorage.setItem(KEY, JSON.stringify(store)); } catch (e) { toast('Non riesco a salvare in questo browser'); }
+    if (sync.gist && Sync.canon(syncPayload()) !== syncState.sent) scheduleSync();
+  };
+  const spChanged = () => { store.spAt = Date.now(); persist(); };
+
+  /* archivio su Gist: configurazione per browser, separata dallo store (il token non finisce negli export) */
+  const SYNC_KEY = 'sigillatore.sync';
+  let sync = {};   // { token, gist, url, last }
+  try { sync = JSON.parse(localStorage.getItem(SYNC_KEY) || '{}') || {}; } catch (e) { /* storage non disponibile */ }
+  const saveSync = () => { try { localStorage.setItem(SYNC_KEY, JSON.stringify(sync)); } catch (e) { /* ignora */ } };
+  const syncState = { busy: false, again: false, err: '', timer: 0, sent: null };
+  const syncPayload = () => ({ app: 'sigillatore', versione: 1, entries: store.entries, deleted: store.deleted, local: store.local, sp: store.sp, spAt: store.spAt });
 
   let D = blank(), SP = store.sp, sel = null, lay = null, curId = store.current;
   let famiglia = '', titolare = '', parentId = null;
@@ -143,7 +156,7 @@
     }).join('');
     const st = $('#stage');
     st.setAttribute('viewBox', vb.join(' '));
-    st.innerHTML = inner + hits;
+    st.innerHTML = inner + guidesSvg(vb) + hits;
     renderBlazon();
   }
 
@@ -289,7 +302,7 @@
     let e = curId && store.entries.find(x => x.id === curId);
     if (!e) { e = { id: uid() }; store.entries.push(e); curId = e.id; }
     Object.assign(e, { famiglia, titolare, parent: parentId, design: clone(D), updated: Date.now() });
-    store.current = curId; store.draft = null; persist(); renderArmorial(); toast('Stemma salvato');
+    store.current = curId; store.draft = null; persist(); renderArmorial(); toast('Stemma salvato'); requestPersistence();
   }
 
   /* ---------- disposizioni ---------- */
@@ -335,7 +348,7 @@
     if (b.dataset.wax) { store.wax = b.dataset.wax; persist(); renderSealOpts(); scheduleSeal(); return; }
     if (b.dataset.set != null && (b.tagName === 'BUTTON')) {
       const path = b.dataset.set, v = b.dataset.val;
-      if (path === 'sp.mode') { SP.mode = v; persist(); renderSealOpts(); scheduleSeal(); return; }
+      if (path === 'sp.mode') { SP.mode = v; spChanged(); renderSealOpts(); scheduleSeal(); return; }
       setPath(path, /^\d+$/.test(v) && path.endsWith('.n') ? +v : v);
       changed(); return;
     }
@@ -356,10 +369,11 @@
     if (act === 'new') { D = blank(); curId = null; parentId = null; famiglia = ''; titolare = ''; sel = null; store.current = null; fullRender(); }
     if (act === 'del-entry') {
       if (b.dataset.confirm !== '1') { b.dataset.confirm = '1'; b.textContent = 'Conferma eliminazione'; setTimeout(() => { if (b.isConnected) { b.dataset.confirm = ''; b.textContent = 'Elimina lo stemma aperto'; } }, 3000); return; }
-      store.entries = store.entries.filter(x => x.id !== curId).map(x => x.parent === curId ? Object.assign(x, { parent: null }) : x);
+      store.deleted[curId] = Date.now();
+      store.entries = store.entries.filter(x => x.id !== curId).map(x => x.parent === curId ? Object.assign(x, { parent: null, updated: Date.now() }) : x);
       curId = null; parentId = null; store.current = null; persist(); renderArmorial(); toast('Stemma eliminato');
     }
-    if (act === 'reset-sp') { Object.assign(SP, SP_DEF); persist(); renderSealOpts(); renderStage(); scheduleSeal(); }
+    if (act === 'reset-sp') { Object.assign(SP, SP_DEF); spChanged(); renderSealOpts(); renderStage(); scheduleSeal(); }
     if (act === 'dl-head') download(nameBase() + '_testa.stl', new Blob([Eng.stl(Eng.headMesh(D, SP, inkCache || Eng.ink(D, SP)), 'testa')], { type: 'model/stl' }));
     if (act === 'dl-handle') download('manico_sigillo.stl', new Blob([Eng.stl(Eng.handleMesh(SP), 'manico')], { type: 'model/stl' }));
     if (act === 'dl-svg') {
@@ -371,7 +385,7 @@
   document.addEventListener('change', e => {
     const el = e.target;
     if (el.classList.contains('add-ord') && el.value) { D.ordinaries.push({ type: el.value, t: 'argento', line: 'dritta' }); changed(); return; }
-    if (el.dataset.sp) { SP[el.dataset.sp] = el.type === 'checkbox' ? el.checked : +el.value; persist(); renderSealOpts(); renderStage(); scheduleSeal(); return; }
+    if (el.dataset.sp) { SP[el.dataset.sp] = el.type === 'checkbox' ? el.checked : +el.value; spChanged(); renderSealOpts(); renderStage(); scheduleSeal(); return; }
     if (el.dataset.set != null && el.dataset.set !== '') {
       const path = el.dataset.set;
       const v = el.type === 'checkbox' ? el.checked : el.dataset.num != null ? +el.value : el.value;
@@ -398,19 +412,59 @@
   const stage = $('#stage');
   let drag = null;
   const svgPt = ev => { const p = stage.createSVGPoint(); p.x = ev.clientX; p.y = ev.clientY; return p.matrixTransform(stage.getScreenCTM().inverse()); };
+
+  /* aggancio magnetico: centro dello scudo, del campo sotto il capo e di ogni parte della partizione */
+  const SNAP_PX = 7;
+  function centroid(paths, back) {
+    let A = 0, cx = 0, cy = 0;
+    for (const p of paths) for (let i = 0; i < p.length; i++) {
+      const a = p[i], b = p[(i + 1) % p.length], w = a.X * b.Y - b.X * a.Y;
+      A += w; cx += (a.X + b.X) * w; cy += (a.Y + b.Y) * w;
+    }
+    return A ? back({ X: cx / (3 * A), Y: cy / (3 * A) }) : null;
+  }
+  function snapTargets() {
+    const back = lay.fr.back, out = [], add = (p, main) => {
+      if (p && !out.some(q => Math.hypot(q[0] - p[0], q[1] - p[1]) < 0.5)) out.push([p[0], p[1], main]);
+    };
+    add(centroid(lay.shield, back), true);
+    const capo = (lay.L.find(l => l.kind === 'capo') || {}).paths || [];
+    if (capo.length) add(centroid(Eng.diff(lay.shield, capo), back), true);
+    if (D.partition !== 'nessuna') lay.L.filter(l => l.kind === 'area').forEach(l => add(centroid(Eng.diff(l.paths, capo), back), false));
+    return out;
+  }
+  function snap(x, y, targets) {
+    const th = SNAP_PX / stage.getScreenCTM().a;
+    let gx = null, gy = null;
+    for (const [tx, ty] of targets) {
+      if (Math.abs(tx - x) < th && (gx == null || Math.abs(tx - x) < Math.abs(gx - x))) gx = tx;
+      if (Math.abs(ty - y) < th && (gy == null || Math.abs(ty - y) < Math.abs(gy - y))) gy = ty;
+    }
+    return { gx, gy };
+  }
+  function guidesSvg(vb) {
+    if (!drag || !drag.moved || !drag.targets) return '';
+    const [x0, y0, w, h] = vb, col = '#B5862B';
+    const marks = drag.targets.map(([x, y, main]) => `<path d="M${x - 2} ${y}h4M${x} ${y - 2}v4" stroke="${col}" stroke-width="${main ? 0.7 : 0.5}" opacity=".9"/>`).join('');
+    const ln = (d) => `<path d="${d}" stroke="${col}" stroke-width="0.5" stroke-dasharray="2 1.5"/>`;
+    return `<g pointer-events="none" clip-path="url(#cs)">${marks}${drag.gx != null ? ln(`M${drag.gx} ${y0}v${h}`) : ''}${drag.gy != null ? ln(`M${x0} ${drag.gy}h${w}`) : ''}</g>`;
+  }
   stage.addEventListener('pointerdown', ev => {
     const h = ev.target.closest('.hit');
     if (!h) { if (sel != null) { sel = null; renderEditor(); renderStage(); } return; }
     const i = +h.dataset.i, p = svgPt(ev);
     const changedSel = sel !== i; sel = i;
-    drag = { i, dx: p.x - D.charges[i].x, dy: p.y - D.charges[i].y, moved: false };
+    drag = { i, dx: p.x - D.charges[i].x, dy: p.y - D.charges[i].y, moved: false, targets: snapTargets(), gx: null, gy: null };
     stage.setPointerCapture(ev.pointerId); stage.classList.add('dragging');
     if (changedSel) { renderEditor(); renderStage(); }
   });
   stage.addEventListener('pointermove', ev => {
     if (!drag) return;
     const p = svgPt(ev), c = D.charges[drag.i];
-    c.x = Math.round((p.x - drag.dx) * 10) / 10; c.y = Math.round((p.y - drag.dy) * 10) / 10; drag.moved = true;
+    const x = p.x - drag.dx, y = p.y - drag.dy;
+    const { gx, gy } = ev.altKey ? {} : snap(x, y, drag.targets);   // Alt = posizionamento libero
+    drag.gx = gx == null ? null : gx; drag.gy = gy == null ? null : gy;
+    c.x = Math.round((drag.gx == null ? x : drag.gx) * 10) / 10; c.y = Math.round((drag.gy == null ? y : drag.gy) * 10) / 10; drag.moved = true;
     requestRender();
   });
   const endDrag = () => { if (!drag) return; const m = drag.moved; drag = null; stage.classList.remove('dragging'); if (m) changed(true); };
@@ -432,7 +486,7 @@
       const have = new Set(store.entries.map(x => x.id));
       let n = 0; for (const x of data.entries) if (!have.has(x.id)) { store.entries.push(x); n++; }
       for (const l of data.local || []) if (!store.local.some(x => x.id === l.id)) { store.local.push(l); try { await Figures.register(l.id, l.svg, { local: true, kind: l.kind }); } catch (err) { /* figura locale illeggibile */ } }
-      persist(); renderArmorial(); renderEditor(); toast(n ? `Importati ${n} stemmi` : 'Nessuno stemma nuovo nel file');
+      persist(); requestPersistence(); renderArmorial(); renderEditor(); toast(n ? `Importati ${n} stemmi` : 'Nessuno stemma nuovo nel file');
     } catch (err) { toast('Il file non è un armoriale del Sigillatore'); }
     e.target.value = '';
   });
@@ -444,7 +498,7 @@
         const kind = /data-tipo\s*=\s*["']ornamento/.test(txt) ? 'ornamento' : 'figura';
         const id = 'locale-' + f.name.replace(/\.svg$/i, '').toLowerCase().replace(/[^a-z0-9]+/g, '-');
         await Figures.register(id, txt, { local: true, kind, name: f.name.replace(/\.svg$/i, '') });
-        store.local = store.local.filter(x => x.id !== id).concat([{ id, svg: txt, kind }]); ok++;
+        store.local = store.local.filter(x => x.id !== id).concat([{ id, svg: txt, kind, at: Date.now() }]); ok++;
       } catch (err) { toast(f.name + ': ' + err.message); }
     }
     persist(); renderEditor();
@@ -458,6 +512,82 @@
   }
   let rt; window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(drawSeal, 150); });
 
+  /* ---------- archivio su GitHub ---------- */
+  function scheduleSync(ms) { if (!sync.gist) return; clearTimeout(syncState.timer); syncState.timer = setTimeout(syncNow, ms == null ? 1500 : ms); }
+  async function syncNow() {
+    if (!sync.gist) return;
+    if (syncState.busy) { syncState.again = true; return; }
+    clearTimeout(syncState.timer);
+    syncState.busy = true; syncState.err = ''; renderSync();
+    try {
+      const remote = await Sync.read(sync.token, sync.gist);
+      const m = Sync.merge(syncPayload(), remote);
+      const out = { app: 'sigillatore', versione: 1, entries: m.entries, deleted: m.deleted, local: m.local, sp: m.sp, spAt: m.spAt };
+      if (!remote || Sync.canon(out) !== Sync.canon(remote)) await Sync.write(sync.token, sync.gist, out);
+      await applyMerged(out, m.alias);
+      sync.last = Date.now(); saveSync();
+    } catch (e) { syncState.err = e.message; }
+    syncState.busy = false; renderSync();
+    if (syncState.again) { syncState.again = false; syncNow(); }
+  }
+  // porta nello store quanto è arrivato dal Gist; si riunisce con lo store attuale perché durante la rete l'utente può aver salvato
+  async function applyMerged(m, alias0) {
+    const n = Sync.merge(syncPayload(), m), alias = Object.assign({}, alias0, n.alias);
+    const res = id => { while (id && alias[id]) id = alias[id]; return id; };
+    const newFigs = n.local.filter(l => !store.local.some(x => x.id === l.id && x.svg === l.svg));
+    for (const l of newFigs) { try { await Figures.register(l.id, l.svg, { local: true, kind: l.kind }); } catch (e) { /* figura locale illeggibile */ } }
+    const spNew = n.spAt > (store.spAt || 0) && n.sp;
+    store.entries = n.entries; store.deleted = n.deleted; store.local = n.local;
+    if (spNew) { Object.assign(SP, n.sp); store.spAt = n.spAt; }
+    curId = res(curId); parentId = res(parentId); if (store.current) store.current = res(store.current);
+    syncState.sent = Sync.canon(syncPayload());
+    persist(); renderArmorial();
+    if (newFigs.length) renderEditor();
+    if (spNew) { renderSealOpts(); renderStage(); scheduleSeal(); }
+  }
+  async function connectSync() {
+    const token = $('#in-token').value.trim(); if (!token) { $('#in-token').focus(); return; }
+    syncState.busy = true; syncState.err = ''; renderSync();
+    try {
+      const g = await Sync.find(token) || await Sync.create(token, syncPayload());
+      sync = { token, gist: g.id, url: g.url }; saveSync(); $('#in-token').value = '';
+    } catch (e) { syncState.err = e.message; }
+    syncState.busy = false;
+    requestPersistence();
+    if (sync.gist) { await syncNow(); if (!syncState.err) toast('Armoriale collegato al Gist'); } else renderSync();
+  }
+  let persisted = null;   // null = il browser non lo dice
+  async function requestPersistence(ask) {
+    if (!navigator.storage || !navigator.storage.persisted) return;
+    try { persisted = await navigator.storage.persisted(); if (!persisted && ask !== false) persisted = await navigator.storage.persist(); } catch (e) { /* non supportato */ }
+    renderSync();
+  }
+  function renderSync() {
+    const on = !!sync.gist, t = sync.last && new Date(sync.last).toLocaleString('it-IT', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+    $('#sync-off').hidden = on; $('#sync-on').hidden = !on;
+    if (on) $('#sync-link').href = sync.url || ('https://gist.github.com/' + sync.gist);
+    $('#sync-status').textContent = !on ? 'non collegato' : syncState.busy ? 'sincronizzo…' : syncState.err ? 'errore' : t ? 'sincronizzato ' + t : 'collegato';
+    $('#sync-status').classList.toggle('bad', !!syncState.err);
+    $('#sync-err').hidden = !syncState.err; $('#sync-err').textContent = syncState.err ? 'Sincronizzazione non riuscita: ' + syncState.err + '.' : '';
+    $('#store-status').textContent = persisted === true ? 'Il browser non cancellerà da solo i dati di questo sito.'
+      : persisted === false ? 'Il browser potrebbe cancellare da solo i dati di questo sito, se gli manca spazio.' : '';
+    for (const b of document.querySelectorAll('[data-act^="sync-"]')) b.disabled = syncState.busy;
+  }
+  document.addEventListener('click', e => {
+    const b = e.target.closest('[data-act^="sync-"]'); if (!b) return;
+    if (b.dataset.act === 'sync-connect') connectSync();
+    if (b.dataset.act === 'sync-now') syncNow();
+    if (b.dataset.act === 'sync-off') {
+      if (b.dataset.confirm !== '1') { b.dataset.confirm = '1'; b.textContent = 'Conferma: scollega'; setTimeout(() => { if (b.isConnected) { b.dataset.confirm = ''; b.textContent = 'Scollega questo browser'; } }, 3000); return; }
+      b.dataset.confirm = ''; b.textContent = 'Scollega questo browser';
+      sync = {}; syncState.err = ''; syncState.sent = null; saveSync(); renderSync(); toast('Browser scollegato: gli stemmi restano qui e nel Gist');
+    }
+  });
+  $('#in-token').addEventListener('keydown', e => { if (e.key === 'Enter') connectSync(); });
+  // quando torni sulla pagina (o torna la rete) riprendo le modifiche fatte altrove
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && sync.gist && Date.now() - (sync.last || 0) > 20000) syncNow(); });
+  window.addEventListener('online', () => { if (sync.gist) syncNow(); });
+
   /* ---------- avvio ---------- */
   (async () => {
     let errors = [];
@@ -468,7 +598,7 @@
     }
     for (const l of store.local) { try { await Figures.register(l.id, l.svg, { local: true, kind: l.kind }); } catch (e) { /* ignora */ } }
     if (!store.entries.length && !store.seeded) {
-      store.entries = EXAMPLES.map(([n, d]) => ({ id: uid(), famiglia: 'Dai tuoi disegni', titolare: n, parent: null, design: d, updated: Date.now() }));
+      store.entries = EXAMPLES.map(([n, d], i) => ({ id: 'esempio-' + (i + 1), famiglia: 'Dai tuoi disegni', titolare: n, parent: null, design: d, updated: 0 }));   // id fissi e updated 0: un esempio eliminato in un browser resta eliminato anche negli altri
       store.seeded = true; store.current = store.entries[1].id; persist();
     }
     const draft = store.draft;
@@ -477,5 +607,7 @@
     $('#loading').hidden = true;
     fullRender();
     if (errors.length) toast('Alcune figure non si sono caricate: ' + errors[0]);
+    renderSync(); requestPersistence(false);
+    if (sync.gist) syncNow();
   })();
 })();
