@@ -26,6 +26,7 @@ const Figures = (() => {
       art: root.getAttribute('data-articolo') || 'al ' + low,
       pl: root.getAttribute('data-plurale') || low,
       blasone: root.getAttribute('data-blasone') || '',
+      secondo: root.getAttribute('data-secondo') || '',   // participio per le parti nel secondo smalto, es. "punteggiata"
       tipo: root.getAttribute('data-tipo') || '',
       doc, root,
     };
@@ -85,7 +86,7 @@ const Figures = (() => {
       for (const k of Object.keys(cache)) if (k.startsWith(id + ':')) delete cache[k];
       cache[key] = geo; saveCache();
     }
-    const def = { n: m.n, sg: m.sg, art: m.art, pl: m.pl, blasone: m.blasone, ar: geo.ar, add: geo.add, sec: geo.sec,
+    const def = { n: m.n, sg: m.sg, art: m.art, pl: m.pl, blasone: m.blasone, secondo: m.secondo, ar: geo.ar, add: geo.add, sec: geo.sec,
       kind: opts.kind || m.tipo || 'figura', src: opts.src || ('data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgText)), local: !!opts.local };
     Eng.addFig(id, def);
     return def;

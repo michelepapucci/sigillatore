@@ -285,8 +285,12 @@ const Eng = (() => {
     part.geo(f, T, d.line || 'dritta').forEach((ps, i) => L.push({ kind: 'area', i, t: d.areas[i] || 'argento',
       paths: inter(ps.length && Array.isArray(ps[0]) && Array.isArray(ps[0][0]) ? ps.map(p => p.map(q => T(...q))) : ps, shield) }));
     d.ordinaries.forEach((o, i) => L.push({ kind: 'ord', i, t: o.t, paths: inter(ordGeo(o, f, T, k, shield), shield) }));
+    const areas = L.filter(l => l.kind === 'area');
     d.charges.forEach((ch, i) => {
-      L.push({ kind: 'charge', i, t: ch.t, paths: inter(figGeo(ch, T), shield) });
+      const body = inter(figGeo(ch, T), shield);
+      // figura divisa secondo la partizione: un pezzo per parte, ciascuno col suo smalto (split[j])
+      if (ch.split && areas.length > 1) areas.forEach((a, j) => L.push({ kind: 'charge', i, part: j, t: ch.split[j] || ch.t, paths: inter(body, a.paths) }));
+      else L.push({ kind: 'charge', i, t: ch.t, paths: body });
       const sec = figGeo(ch, T, 'sec'); if (sec.length) L.push({ kind: 'charge2', i, t: ch.t2 || 'rosso', paths: inter(sec, shield) });
     });
     const S = SHIELDS[d.shape];

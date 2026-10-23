@@ -130,9 +130,10 @@
     S.push(`<div class="sec"><div class="sec-h"><h3>Figure</h3>
       <label class="btn small" title="Prova un SVG prima di metterlo in resources/">Prova SVG<input id="in-svg" type="file" accept=".svg,image/svg+xml" multiple hidden></label></div>
       <div class="lib">${figs.map(([k, f]) => `<button class="fig" data-act="add-fig" data-fig="${esc(k)}" title="Aggiungi ${esc(f.n)}"><img src="${esc(f.src)}" alt="">${esc(f.n)}${f.local ? '<span class="tag">locale</span>' : ''}</button>`).join('')}</div>
-      ${ch ? `<div class="item selbox"><div class="item-h"><strong>${esc(F ? F.n : ch.fig)} ${T[ch.t].n.toLowerCase()}</strong>
+      ${ch ? `<div class="item selbox"><div class="item-h"><strong>${esc(F ? F.n : ch.fig)} ${isSplit(ch) ? 'divisa' : T[ch.t].n.toLowerCase()}</strong>
           <div class="row gap-s"><button class="btn small" data-act="dup">Duplica</button><button class="x" data-act="del-ch" aria-label="Rimuovi figura">×</button></div></div>
-        ${chips('charges.' + sel + '.t', ch.t)}
+        ${isSplit(ch) ? part.labels.map((l, j) => `<div class="field-row"><span class="lbl">Pezzo nel ${esc(l)} <b>${T[ch.split[j] || ch.t].n}</b></span>${chips('charges.' + sel + '.split.' + j, ch.split[j] || ch.t)}</div>`).join('') : chips('charges.' + sel + '.t', ch.t)}
+        ${D.partition !== 'nessuna' ? `<label class="switch"><input type="checkbox" class="tog-split" ${isSplit(ch) ? 'checked' : ''}> Divisa secondo la partizione</label>` : ''}
         ${F && F.sec.length ? `<div class="field-row"><span class="lbl">Secondo smalto <b>${T[ch.t2 || 'rosso'].n}</b></span>${chips('charges.' + sel + '.t2', ch.t2 || 'rosso')}</div>` : ''}
         <div class="field-row"><span class="lbl">Dimensione <b>${Math.round(ch.s)}</b></span><input type="range" min="8" max="115" step="1" value="${ch.s}" data-set="charges.${sel}.s" data-num></div>
         <div class="field-row"><span class="lbl">Rotazione <b>${Math.round(ch.r || 0)}°</b></span><input type="range" min="-180" max="180" step="5" value="${ch.r || 0}" data-set="charges.${sel}.r" data-num></div>
@@ -193,15 +194,33 @@
   const NUM = ['', 'un', 'due', 'tre', 'quattro', 'cinque', 'sei', 'sette', 'otto', 'nove', 'dieci'];
   const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
   const of = t => T[t].of;
-  function chargePhrase(list) {
+  const isFem = F => /^(una |un')/.test(F.sg);
+  // accorda un aggettivo o participio (troncato, ondato, punteggiata…) a genere e numero della figura
+  const agree = (w, fem, pl) => w.replace(/[oa]$/, pl ? (fem ? 'e' : 'i') : (fem ? 'a' : 'o'));
+  const isSplit = c => !!c.split && D.partition !== 'nessuna';
+  // smalti di una figura divisa: "dell'uno nell'altro" se scambia i due smalti del campo, altrimenti "troncata di X e di Y"
+  function splitDesc(c, F, pl) {
+    const P = Eng.PARTS[D.partition], ts = D.areas.slice(0, P.labels.length), sp = ts.map((t, j) => c.split[j] || c.t);
+    if (ts.length === 2 && sp[0] === ts[1] && sp[1] === ts[0]) return "dell'uno nell'altro";
+    const ln = Eng.LINES[D.line || 'dritta'], fem = isFem(F), w = P.n.toLowerCase().split(' '), os = sp.map(of);
+    w[0] = agree(w[0], fem, pl);
+    return w.join(' ') + (ln.adj ? ' ' + agree(ln.adj, fem, pl) : '') + ' ' + os.slice(0, -1).join(', ') + ' e ' + os[os.length - 1];
+  }
+  // suffix (es. "attraversante") va dopo l'ultima figura, prima dell'eventuale frase sul secondo smalto
+  function chargePhrase(list, suffix) {
     const groups = [];
     for (const c of list) {
-      const g = groups.find(g => g.fig === c.fig && g.t === c.t && (g.attr || '') === (c.attr || ''));
-      if (g) g.n++; else groups.push({ fig: c.fig, t: c.t, attr: c.attr, n: 1 });
+      const F = Eng.FIGS[c.fig]; if (!F) continue;
+      const sec = F.secondo && F.sec.length ? of(c.t2 || 'rosso') : '';
+      const key = [c.fig, isSplit(c) ? JSON.stringify(c.split) : c.t, c.attr || '', sec].join('|');
+      const g = groups.find(g => g.key === key);
+      if (g) g.n++; else groups.push({ key, c, F, sec, n: 1 });
     }
-    const ph = groups.map(g => { const F = Eng.FIGS[g.fig]; if (!F) return '';
-      const base = g.n === 1 ? F.art + ' ' + of(g.t) : 'a ' + NUM[g.n] + ' ' + F.pl + ' ' + of(g.t);
-      return base + (g.attr ? ' ' + g.attr : ''); }).filter(Boolean);
+    const ph = groups.map(({ c, F, sec, n }, gi) => {
+      const pl = n > 1, tint = isSplit(c) ? splitDesc(c, F, pl) : of(c.t);
+      return (pl ? 'a ' + NUM[n] + ' ' + F.pl : F.art) + ' ' + tint + (c.attr ? ' ' + c.attr : '') + (suffix && gi === groups.length - 1 ? ' ' + suffix : '') +
+        (sec ? ', ' + agree(F.secondo, isFem(F), pl) + ' ' + sec : '');
+    });
     return ph.length > 1 ? ph.slice(0, -1).join(', ') + ' e ' + ph[ph.length - 1] : (ph[0] || '');
   }
   function renderBlazon() {
@@ -210,6 +229,7 @@
     const n = P.labels.length;
     // a quale partizione appartiene ciascuna figura?
     const where = D.charges.map((c, i) => {
+      if (isSplit(c) && n > 1) return -2;   // divisa secondo la partizione: sta in tutte le parti per definizione
       const L = lay.L.find(l => l.kind === 'charge' && l.i === i); if (!L || !L.paths.length) return -1;
       const hit = areas.map(a => Eng.inter(L.paths, a.paths).length > 0);
       return hit.filter(Boolean).length === 1 ? hit.indexOf(true) : -1;
@@ -217,7 +237,7 @@
     const ordTxt = D.ordinaries.map(o => { const O = Eng.ORDS[o.type], l = Eng.LINES[o.line || 'dritta'];
       return O.art + (O.line && l.adj ? ' ' + (O.g === 'f' ? l.adjf : l.adj) : '') + ' ' + of(o.t); });
     let s;
-    const crossing = D.charges.filter((c, i) => where[i] < 0);
+    const crossing = D.charges.filter((c, i) => where[i] === -1), split = D.charges.filter((c, i) => where[i] === -2);
     if (n === 1) {
       s = cap(of(D.areas[0])) + [...ordTxt, chargePhrase(D.charges)].filter(Boolean).map(x => ', ' + x).join('');
     } else {
@@ -230,7 +250,8 @@
         s = name + ' ' + (ts.length > 1 ? ts.slice(0, -1).join(', ') + ' e ' + ts[ts.length - 1] : ts[0]);
       }
       const extra = [...ordTxt];
-      if (crossing.length) extra.push(chargePhrase(crossing) + ' attravers' + (crossing.length > 1 ? 'anti' : 'ante'));
+      if (split.length) extra.push(chargePhrase(split));
+      if (crossing.length) extra.push(chargePhrase(crossing, 'attravers' + (crossing.length > 1 ? 'anti' : 'ante')));
       if (extra.length) s += '; ' + extra.join(', ');
     }
     if (D.capo.on) {
@@ -415,6 +436,13 @@
   });
   document.addEventListener('change', e => {
     const el = e.target;
+    if (el.classList.contains('tog-split')) {
+      const c = D.charges[sel], a = D.areas.slice(0, Eng.PARTS[D.partition].labels.length);
+      // di base ogni pezzo prende lo smalto di un'altra parte (dell'uno nell'altro)
+      if (el.checked) c.split = a.length === 2 ? [a[1], a[0]] : a.length === 4 ? [a[1], a[0], a[3], a[2]] : a.map((_, j) => a[(j + 1) % a.length]);
+      else delete c.split;
+      changed(); return;
+    }
     if (el.classList.contains('sel-gilda')) {
       const g = GUILDS.gilde.find(x => x.id === el.value);
       if (g) Object.assign(D.capo, guildCapo(g), { gilda: g.id }); else { D.capo.gilda = ''; capoAdv = true; }
@@ -469,6 +497,7 @@
     add(centroid(lay.shield, back), true);
     const capo = (lay.L.find(l => l.kind === 'capo') || {}).paths || [];
     if (capo.length) add(centroid(Eng.diff(lay.shield, capo), back), true);
+    if (D.partition !== 'nessuna') add([50, Eng.SHIELDS[D.shape].fy], true);   // punto della partizione, dove si incontrano le linee
     if (D.partition !== 'nessuna') lay.L.filter(l => l.kind === 'area').forEach(l => add(centroid(Eng.diff(l.paths, capo), back), false));
     return out;
   }

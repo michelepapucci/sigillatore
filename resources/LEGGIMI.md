@@ -41,6 +41,8 @@ Attributi sul tag `<svg>` radice:
      data-plurale="chiavi">
 ```
 
+Se la figura ha parti in rosso puro (secondo smalto), `data-secondo` dà il participio con cui blasonarle. Va al singolare e nel genere della figura: con `data-secondo="punteggiata"` la tessera diventa "alla tessera d'argento, punteggiata di nero". Il genere si ricava da `data-singolare` ("una …" o "un'…" = femminile).
+
 Per gli ornamenti puoi aggiungere `data-blasone="timbrato dalla corona reale"`.
 Un file caricato con *Prova SVG* è trattato come ornamento se ha `data-tipo="ornamento"`.
 
